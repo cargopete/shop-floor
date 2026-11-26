@@ -4,7 +4,7 @@ set -euo pipefail
 L="$(cd "$(dirname "$0")/.." && pwd)/skills/shop-floor-lead/launch-worker.sh"
 T=$(mktemp -d)
 export SF_DIR="$T/sf" TMUX_TMPDIR="$T" SF_GH_REPO=o/r
-# shellcheck disable=SC2317  # called from the trap
+# shellcheck disable=SC2317,SC2329  # called from the trap
 cleanup() {
   for s in "$T"/tmux-*/*; do [ -S "$s" ] && tmux -S "$s" kill-server 2>/dev/null; done
   rm -rf "$T"
