@@ -2,8 +2,14 @@
 # Runs launch-worker.sh against a throwaway repo with fake claude and gh binaries.
 set -euo pipefail
 L="$(cd "$(dirname "$0")/.." && pwd)/skills/shop-floor-lead/launch-worker.sh"
-T=$(mktemp -d); trap 'tmux kill-server 2>/dev/null || true; rm -rf "$T"' EXIT
-export SF_DIR="$T/sf" TMUX_TMPDIR="$T"
+T=$(mktemp -d)
+export SF_DIR="$T/sf" TMUX_TMPDIR="$T" SF_GH_REPO=o/r
+# shellcheck disable=SC2317  # called from the trap
+cleanup() {
+  for s in "$T"/tmux-*/*; do [ -S "$s" ] && tmux -S "$s" kill-server 2>/dev/null; done
+  rm -rf "$T"
+}
+trap cleanup EXIT
 git config --global user.email >/dev/null 2>&1 || { git config --global user.email ci@example.com; git config --global user.name ci; }
 git init -q --bare -b main "$T/origin.git"
 git clone -q "$T/origin.git" "$T/repo" 2>/dev/null
@@ -16,43 +22,70 @@ brief="$2"
 echo "some stderr noise" >&2
 case "$brief" in
   *CAP*) echo '{"type":"result","subtype":"error_max_turns"}'; exit 0 ;;
+  *ENV*) [ "${SF_TEST_AUTH:-}" = from-launcher ] || { echo '{"type":"result","subtype":"error_during_execution"}'; exit 1; }
+         echo x > f; git add f; git commit -qm "add f" ;;
   *TRAILER*) echo x > f; git add f; git commit -qm "add f" -m "Co-Authored-By: Claude <noreply@anthropic.com>" ;;
   *COMMIT*) echo x > f; git add f; git commit -qm "add f" ;;
 esac
 pr=$(grep -o '/[^ ]*pr.md' <<<"$brief" | head -n 1)
-case "$brief" in *COMMIT*|*TRAILER*) printf 'Add f\n\nCloses #1\n' > "$pr" ;; esac
+case "$brief" in *COMMIT*|*TRAILER*|*ENV*) printf 'Add f\n\nCloses #1\n' > "$pr" ;; esac
 echo '{"type":"result","subtype":"success","result":"did the thing"}'
 FAKE
 cat > "$T/bin/gh" <<'FAKE'
 #!/usr/bin/env bash
-case "$1 $2" in "pr create") echo "https://github.com/o/r/pull/9" ;; esac
+echo "$*" >> "$SF_DIR/gh.log"
+case "$1 $2" in
+  "pr create") echo "https://github.com/o/r/pull/9" ;;
+  "issue view") echo worker-failed ;;
+esac
 FAKE
-chmod +x "$T/bin/claude" "$T/bin/gh"
+cat > "$T/publish" <<'FAKE'
+#!/usr/bin/env bash
+echo "publishing $SF_BRANCH to $SF_GH_REPO: $SF_PR_TITLE"
+[ -s "$SF_PR_BODY_FILE" ] && echo "https://github.com/o/r/pull/77"
+FAKE
+chmod +x "$T/bin/claude" "$T/bin/gh" "$T/publish"
 export PATH="$T/bin:$PATH"
 
+# A tmux server that already runs with a different environment must not leak
+# into the worker: that was a real bug.
+env -u SF_TEST_AUTH tmux new-session -d -s unrelated "sleep 60"
+
 cd "$T/repo"
-for b in nothing COMMIT TRAILER CAP; do echo "$b" > "$T/$b.md"; done
+for b in nothing COMMIT TRAILER CAP ENV; do echo "$b" > "$T/$b.md"; done
 "$L" nothing "$T/nothing.md" >/dev/null
-"$L" commit "$T/COMMIT.md" >/dev/null
+SF_ISSUE=1 "$L" commit "$T/COMMIT.md" >/dev/null
 "$L" trailer "$T/TRAILER.md" >/dev/null
-"$L" cap "$T/CAP.md" >/dev/null
+SF_ISSUE=2 "$L" cap "$T/CAP.md" >/dev/null
 SF_PUSH=0 "$L" local "$T/COMMIT.md" >/dev/null
+SF_TEST_AUTH=from-launcher "$L" env "$T/ENV.md" >/dev/null
+SF_PUBLISH="$T/publish" "$L" publish "$T/COMMIT.md" >/dev/null
 
 for _ in $(seq 50); do
   n=$(find "$SF_DIR/logs" -name result | wc -l)
-  [ "$n" -ge 5 ] && break; sleep 0.2
+  [ "$n" -ge 7 ] && break; sleep 0.2
 done
 fail=0
 expect() {
   local got; got=$(head -n 1 "$SF_DIR/logs/$1/result" 2>/dev/null || echo "(no result)")
   if [[ "$got" == $2* ]]; then echo "ok   $1: $got"; else echo "FAIL $1: wanted '$2...', got '$got'"; fail=1; fi
 }
+has() { if grep -qF -- "$2" "$1"; then echo "ok   $3"; else echo "FAIL $3"; fail=1; fi; }
 expect nothing "FAILED: clean exit but no commits"
 expect commit  "DONE: https://github.com/o/r/pull/9"
 expect trailer "FAILED: commits or PR text carry an AI attribution"
 expect cap     "CAP HIT: max turns"
 expect local   "DONE (local)"
+expect env     "DONE: https://github.com/o/r/pull/9"
+expect publish "DONE: https://github.com/o/r/pull/77"
 git -C "$T/origin.git" rev-parse -q --verify agent/commit >/dev/null || { echo "FAIL commit branch not pushed"; fail=1; }
 ! git -C "$T/origin.git" rev-parse -q --verify agent/trailer >/dev/null || { echo "FAIL trailer branch was pushed"; fail=1; }
+! git -C "$T/origin.git" rev-parse -q --verify agent/publish >/dev/null || { echo "FAIL built-in push ran despite SF_PUBLISH"; fail=1; }
+has "$SF_DIR/gh.log" "issue edit 1 -R o/r --add-label worker-running" "worker-running added at launch"
+has "$SF_DIR/gh.log" "issue edit 1 -R o/r --remove-label worker-running" "worker-running removed at the end"
+has "$SF_DIR/gh.log" "issue edit 2 -R o/r --add-label worker-failed" "worker-failed added when the run ends without a PR"
+has "$SF_DIR/gh.log" "pr create -R o/r --base main --head agent/commit" "PR opened against the right repo and base"
+grep -q "issue edit 1 -R o/r --add-label worker-failed" "$SF_DIR/gh.log" && { echo "FAIL worker-failed added to a DONE run"; fail=1; }
+if grep -qE "^commit +DONE" <<<"$("$L" --status)"; then echo "ok   --status shows the verdict"; else echo "FAIL --status"; "$L" --status; fail=1; fi
 "$L" commit "$T/COMMIT.md" >/dev/null 2>&1 && { echo "FAIL relaunch over commits was allowed"; fail=1; } || echo "ok   relaunch over existing commits refused"
 exit $fail
