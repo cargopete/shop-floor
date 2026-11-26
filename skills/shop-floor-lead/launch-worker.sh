@@ -2,6 +2,8 @@
 # launch-worker.sh: run one headless Claude Code worker on one GitHub issue.
 #
 #   launch-worker.sh <name> <brief-file> [model]    start a worker in tmux
+#   launch-worker.sh --review <name> <brief-file> [model]
+#                                                   fresh-context review of agent/<name>
 #   launch-worker.sh --status                       one line per run
 #
 # Run it from inside the repo the worker should change (or set SF_REPO).
@@ -11,6 +13,8 @@
 # and a log directory. The worker commits only. When it exits, this script checks the result, pushes the
 # branch and opens one PR with the text the worker wrote. A run that exits
 # cleanly without commits or PR text is recorded as FAILED, not done.
+# A review run (review-<name>) gets a detached checkout of agent/<name>,
+# no Edit or Write tools by default, and its verdict as the result; it never pushes.
 #
 # Settings (all optional):
 #   SF_REPO        path to the repo                (default: the repo you're in)
@@ -22,7 +26,8 @@
 #   SF_MAX_BUDGET  claude --max-budget-usd         (default: not passed)
 #   SF_TIMEOUT     seconds before the run is killed (default: 5400)
 #   SF_EFFORT      claude --effort                 (default: not passed)
-#   SF_TOOLS       allowed tools (default: "Bash Edit Write Read Glob Grep")
+#   SF_TOOLS       allowed tools (default: "Bash Edit Write Read Glob Grep";
+#                  reviews get "Bash Read Glob Grep")
 #   SF_PUSH=0      leave the branch local, don't open a PR
 #   SF_ALLOW_ATTRIBUTION=1  push even if commits carry AI co-author trailers
 #   SF_GH          the gh command for labels and the PR (default: gh), e.g.
@@ -75,6 +80,18 @@ finish() {
   commits=$(git -C "$WT" log --oneline "$BASE..HEAD" 2>/dev/null | wc -l | tr -d ' ')
 
   local verdict
+  if [ "$MODE" = review ]; then
+    if [ -z "$summary" ]; then
+      verdict="ABORTED: no result record (timeout after ${TIMEOUT}s or crash). See $d/run.jsonl"
+    elif [[ "$summary" == CAP\ HIT* || "$summary" == ERROR* ]]; then
+      verdict="$summary"
+    else
+      verdict="REVIEWED: $(grep -m 1 -v '^[[:space:]]*$' <<<"$summary" | cut -c1-120)"
+    fi
+    [ -z "$(git -C "$WT" status --porcelain --untracked-files=no)" ] || verdict="$verdict (note: the review changed tracked files)"
+    { echo "$verdict"; [ -n "$summary" ] && { echo; echo "$summary"; }; } > "$res"
+    return 0
+  fi
   if [ -z "$summary" ]; then
     verdict="ABORTED: no result record (timeout after ${TIMEOUT}s or crash). See $d/run.jsonl"
   elif [[ "$summary" == CAP\ HIT* || "$summary" == ERROR* ]]; then
@@ -126,11 +143,15 @@ finish() {
 case "${1:-}" in
   --status) status; exit 0 ;;
   --finish) finish "$2"; exit 0 ;;
-  ""|-h|--help) sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  ""|-h|--help) sed -n '2,41p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 esac
 
-NAME=$1; BRIEF=${2:-}; MODEL=${3:-sonnet}
+MODE=work
+if [ "$1" = --review ]; then MODE=review; shift; fi
+NAME=${1:-}; BRIEF=${2:-}; MODEL=${3:-sonnet}
 [[ "$NAME" =~ ^[A-Za-z0-9._-]+$ ]] || die "name must match [A-Za-z0-9._-]+"
+SRC=$NAME
+if [ "$MODE" = review ]; then NAME="review-$SRC"; SF_ISSUE=""; SF_PUSH=0; fi
 [ -f "$BRIEF" ] || die "brief file not found: $BRIEF"
 for c in git tmux jq claude; do command -v "$c" >/dev/null || die "$c is not installed"; done
 MAX_TURNS=${SF_MAX_TURNS:-60}; TIMEOUT=${SF_TIMEOUT:-5400}; ISSUE=${SF_ISSUE:-}
@@ -158,19 +179,32 @@ fi
 tm "$NAME" has-session -t "sf-$NAME" 2>/dev/null && die "sf-$NAME is still running"
 D="$SF_DIR/logs/$NAME"; WT="$SF_DIR/worktrees/$(basename "$REPO")/$NAME"
 mkdir -p "$D" "$(dirname "$WT")"
-if [ -d "$WT" ] && [ -n "$(git -C "$WT" log --oneline "$BASE..HEAD")" ]; then
-  die "agent/$NAME already has commits in $WT; pick a new name or remove the worktree"
+if [ "$MODE" = review ]; then
+  HEAD_SHA=$(git -C "$REPO" rev-parse -q --verify "agent/$SRC" || git -C "$REPO" rev-parse -q --verify "origin/agent/$SRC") ||
+    die "no branch agent/$SRC to review"
+  [ ! -d "$WT" ] || git -C "$REPO" worktree remove --force "$WT"
+  git -C "$REPO" worktree add -q --detach "$WT" "$HEAD_SHA"
+else
+  if [ -d "$WT" ] && [ -n "$(git -C "$WT" log --oneline "$BASE..HEAD")" ]; then
+    die "agent/$NAME already has commits in $WT; pick a new name or remove the worktree"
+  fi
+  [ -d "$WT" ] || git -C "$REPO" worktree add -q -B "agent/$NAME" "$WT" "$BASE"
 fi
-[ -d "$WT" ] || git -C "$REPO" worktree add -q -B "agent/$NAME" "$WT" "$BASE"
 rm -f "$D/result" "$D/pr.md" "$D/push.err" "$D/labels.err"
 
 {
   cat "$BRIEF"
   printf '\n\n---\n'
+  if [ "$MODE" = review ]; then
+    printf 'This is a review run. The checkout is branch agent/%s at %s; review it against %s (git diff %s...HEAD).\n' "$SRC" "$HEAD_SHA" "$BASE" "$BASE"
+    printf 'Do not edit tracked files, commit or push. You may build and run the tests.\n'
+    printf 'Finish with your verdict on line 1 (APPROVE, APPROVE WITH NITS or REQUEST CHANGES), then the findings, most important first, each with file:line.\n'
+  else
   printf 'Work in this checkout, on branch agent/%s. Commit with plain messages and no AI co-author trailers.\n' "$NAME"
   printf 'Do not push and do not open the PR yourself; the launcher does that after you exit.\n'
   printf 'Before you finish, write the PR text to %s: line 1 is the title, then a blank line, then the body: what changed, why, how you checked it, and a "Closes #N" line.\n' "$D/pr.md"
   printf 'Finish with a summary of at most 10 lines. Stopping with no commits counts as a failed run, so if you are blocked, say exactly what you need decided.\n'
+  fi
 } > "$D/brief.md"
 
 q() { printf '%q' "$1"; }
@@ -181,14 +215,16 @@ MAX_TURNS=$(q "$MAX_TURNS")
 TIMEOUT=$(q "$TIMEOUT")
 ISSUE=$(q "$ISSUE")
 PUSH=$(q "${SF_PUSH:-1}")
+MODE=$(q "$MODE")
 ALLOW_ATTRIBUTION=$(q "${SF_ALLOW_ATTRIBUTION:-0}")
 GH_CMD=$(q "$GH_CMD")
 GH_REPO=$(q "$GH_REPO")
 PUBLISH=$(q "$PUBLISH")
 META
 
+DEFAULT_TOOLS="Bash Edit Write Read Glob Grep"; [ "$MODE" = work ] || DEFAULT_TOOLS="Bash Read Glob Grep"
 ARGS=(--model "$MODEL" --max-turns "$MAX_TURNS"
-      --permission-mode acceptEdits --allowedTools "${SF_TOOLS:-Bash Edit Write Read Glob Grep}"
+      --permission-mode acceptEdits --allowedTools "${SF_TOOLS:-$DEFAULT_TOOLS}"
       --output-format stream-json --verbose)
 [ -z "${SF_MAX_BUDGET:-}" ] || ARGS+=(--max-budget-usd "$SF_MAX_BUDGET")
 [ -z "${SF_EFFORT:-}" ] || ARGS+=(--effort "$SF_EFFORT")

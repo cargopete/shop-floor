@@ -52,16 +52,21 @@ cargo install --git https://github.com/cargopete/shop-floor needs-me
 ```sh
 cd your-repo
 SF_ISSUE=42 bash ~/.claude/skills/shop-floor-lead/launch-worker.sh fix-42 brief.md opus
+bash ~/.claude/skills/shop-floor-lead/launch-worker.sh --review fix-42 review-brief.md opus
 bash ~/.claude/skills/shop-floor-lead/launch-worker.sh --status
 ```
 
-for each run it makes a git worktree on branch `agent/<name>` from the default branch and starts `claude -p` in tmux session `sf-<name>`, with a turn cap, a timeout and an optional spend cap (`SF_MAX_TURNS`, `SF_TIMEOUT`, `SF_MAX_BUDGET`). the worker runs without github tokens in its environment and is told to commit only. when it exits, the launcher:
+for each run it makes a git worktree on branch `agent/<name>` from the default branch and starts `claude -p` in tmux session `sf-<name>` on its own tmux server (`tmux -L sf-<name> attach` to watch), with a turn cap, a timeout and an optional spend cap (`SF_MAX_TURNS`, `SF_TIMEOUT`, `SF_MAX_BUDGET`). the worker runs without github tokens in its environment and is told to commit only. when it exits, the launcher:
 
 - reads the result from claude's json log, not the exit code
 - calls it `FAILED` if there are no commits or no PR text, `CAP HIT` if a cap stopped it, `ABORTED` if it timed out or crashed
 - refuses to push if a commit or the PR text carries an AI co-author trailer (`SF_ALLOW_ATTRIBUTION=1` if you don't care)
 - otherwise pushes the branch and opens or updates one PR, with your normal `gh` login
 - moves `worker-running` to `worker-failed` on the issue when the run didn't end in a PR
+
+`--review` runs a second worker with a fresh context on a detached checkout of the branch, without edit tools, and records its verdict. it never pushes.
+
+if your workers run as a user with no github access (mine do), `SF_GH` sets the gh command and `SF_PUBLISH` swaps in your own push-and-open-PR script.
 
 the first line of `~/.shop-floor/logs/<name>/result` is the verdict. `--help` lists the rest of the knobs. needs git, tmux, jq, gh and claude.
 

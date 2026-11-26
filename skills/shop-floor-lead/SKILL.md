@@ -27,7 +27,7 @@ work moving and the issue list honest. Workers do the changes.
    ```
 
    It makes a worktree and branch `agent/fix-42`, runs `claude -p` in tmux
-   session `sf-fix-42` with turn and time caps (`SF_MAX_TURNS`,
+   session `sf-fix-42` (on its own server: `tmux -L sf-fix-42 attach`) with turn and time caps (`SF_MAX_TURNS`,
    `SF_TIMEOUT`, optional `SF_MAX_BUDGET`), then pushes and opens the PR from
    the text the worker wrote. Run `bash launch-worker.sh --help` for the knobs.
    Don't run more workers at once than the machine and your budget can take;
@@ -40,9 +40,11 @@ work moving and the issue list honest. Workers do the changes.
      comment saying why.
    - `CAP HIT: ...` / `ABORTED: ...`: look at the branch, then relaunch with
      a bigger cap or a smaller brief.
-6. **Review.** A PR is done when CI is green and a separate review pass (you,
-   or a second worker launched on the branch with a review-only brief) is
-   happy with the diff. Push back on scope creep. Don't merge your own
+6. **Review.** A PR is done when CI is green and a separate review pass is
+   happy with the diff. For a fresh-context review, run
+   `bash launch-worker.sh --review fix-42 review-brief.md opus`: it checks out
+   `agent/fix-42` detached, without Edit or Write tools, and its result starts
+   `REVIEWED: <verdict>`. Post the findings on the PR yourself. Push back on scope creep. Don't merge your own
    unreviewed work.
 7. **Merge or hand over.** Merge only if the human said you may. Otherwise
    leave it green; `needs-me` will show it to them.

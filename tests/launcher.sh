@@ -21,6 +21,7 @@ cat > "$T/bin/claude" <<'FAKE'
 brief="$2"
 echo "some stderr noise" >&2
 case "$brief" in
+  *REVIEWME*) printf '%s\n' '{"type":"result","subtype":"success","result":"APPROVE WITH NITS\n- f:1 nit"}'; exit 0 ;;
   *CAP*) echo '{"type":"result","subtype":"error_max_turns"}'; exit 0 ;;
   *ENV*) [ "${SF_TEST_AUTH:-}" = from-launcher ] || { echo '{"type":"result","subtype":"error_during_execution"}'; exit 1; }
          echo x > f; git add f; git commit -qm "add f" ;;
@@ -65,6 +66,9 @@ for _ in $(seq 50); do
   n=$(find "$SF_DIR/logs" -name result | wc -l)
   [ "$n" -ge 7 ] && break; sleep 0.2
 done
+echo REVIEWME > "$T/REVIEWME.md"
+"$L" --review commit "$T/REVIEWME.md" >/dev/null
+for _ in $(seq 50); do [ -s "$SF_DIR/logs/review-commit/result" ] && break; sleep 0.2; done
 fail=0
 expect() {
   local got; got=$(head -n 1 "$SF_DIR/logs/$1/result" 2>/dev/null || echo "(no result)")
@@ -78,6 +82,11 @@ expect cap     "CAP HIT: max turns"
 expect local   "DONE (local)"
 expect env     "DONE: https://github.com/o/r/pull/9"
 expect publish "DONE: https://github.com/o/r/pull/77"
+expect review-commit "REVIEWED: APPROVE WITH NITS"
+if [ "$(git -C "$SF_DIR/worktrees/repo/review-commit" rev-parse HEAD)" = "$(git -C "$T/repo" rev-parse agent/commit)" ]; then
+  echo "ok   review checks out the worker's branch"
+else echo "FAIL review checkout"; fail=1; fi
+git -C "$T/repo" rev-parse -q --verify agent/review-commit >/dev/null && { echo "FAIL review made a branch"; fail=1; }
 git -C "$T/origin.git" rev-parse -q --verify agent/commit >/dev/null || { echo "FAIL commit branch not pushed"; fail=1; }
 ! git -C "$T/origin.git" rev-parse -q --verify agent/trailer >/dev/null || { echo "FAIL trailer branch was pushed"; fail=1; }
 ! git -C "$T/origin.git" rev-parse -q --verify agent/publish >/dev/null || { echo "FAIL built-in push ran despite SF_PUBLISH"; fail=1; }
