@@ -67,6 +67,8 @@ finish() {
   local name=$1 d="$SF_DIR/logs/$1"
   # shellcheck disable=SC1091
   . "$d/meta"
+  # Runs started by an older copy of this script have fewer keys.
+  MODE=${MODE:-work} GH_CMD=${GH_CMD:-gh} GH_REPO=${GH_REPO:-} PUBLISH=${PUBLISH:-}
   local -a GH; read -r -a GH <<<"$GH_CMD"
   local res="$d/result" summary
   # The log mixes claude's JSON lines with anything it printed to stderr.
