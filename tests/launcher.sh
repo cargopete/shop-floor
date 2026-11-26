@@ -21,7 +21,8 @@ cat > "$T/bin/claude" <<'FAKE'
 brief="$2"
 echo "some stderr noise" >&2
 case "$brief" in
-  *REVIEWME*) printf '%s\n' '{"type":"result","subtype":"success","result":"APPROVE WITH NITS\n- f:1 nit"}'; exit 0 ;;
+  *REVIEWME*) printf '%s\n' '{"type":"result","subtype":"success","result":"**APPROVE WITH NITS**\n- f:1 nit"}'; exit 0 ;;
+  *MORE*) echo y >> f; git add f; git commit -qm "address review"; pr=$(grep -o '/[^ ]*pr.md' <<<"$brief" | head -n 1); printf 'Add f\n\nCloses #1\n' > "$pr" ;;
   *CAP*) echo '{"type":"result","subtype":"error_max_turns"}'; exit 0 ;;
   *ENV*) [ "${SF_TEST_AUTH:-}" = from-launcher ] || { echo '{"type":"result","subtype":"error_during_execution"}'; exit 1; }
          echo x > f; git add f; git commit -qm "add f" ;;
@@ -96,5 +97,14 @@ has "$SF_DIR/gh.log" "issue edit 2 -R o/r --add-label worker-failed" "worker-fai
 has "$SF_DIR/gh.log" "pr create -R o/r --base main --head agent/commit" "PR opened against the right repo and base"
 grep -q "issue edit 1 -R o/r --add-label worker-failed" "$SF_DIR/gh.log" && { echo "FAIL worker-failed added to a DONE run"; fail=1; }
 if grep -qE "^commit +DONE" <<<"$("$L" --status)"; then echo "ok   --status shows the verdict"; else echo "FAIL --status"; "$L" --status; fail=1; fi
-"$L" commit "$T/COMMIT.md" >/dev/null 2>&1 && { echo "FAIL relaunch over commits was allowed"; fail=1; } || echo "ok   relaunch over existing commits refused"
+echo MORE > "$T/MORE.md"
+if "$L" commit "$T/nothing.md" >/dev/null 2>&1; then echo "FAIL relaunch over commits was allowed"; fail=1; else echo "ok   relaunch over existing commits refused"; fi
+rm "$SF_DIR/logs/commit/result"; SF_CONTINUE=1 "$L" commit "$T/MORE.md" >/dev/null
+for _ in $(seq 50); do [ -s "$SF_DIR/logs/commit/result" ] && break; sleep 0.2; done
+expect commit "DONE: https://github.com/o/r/pull/9"
+if [ "$(git -C "$T/repo" rev-list --count main..agent/commit)" = 2 ]; then echo "ok   continue added a commit on the same branch"
+else echo "FAIL continue"; fail=1; fi
+SF_CONTINUE=1 "$L" commit "$T/nothing.md" >/dev/null
+for _ in $(seq 50); do [ -s "$SF_DIR/logs/commit/result" ] && break; sleep 0.2; done
+expect commit "FAILED: clean exit but no new commits"
 exit $fail

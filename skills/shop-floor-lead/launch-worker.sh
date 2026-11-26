@@ -28,6 +28,8 @@
 #   SF_EFFORT      claude --effort                 (default: not passed)
 #   SF_TOOLS       allowed tools (default: "Bash Edit Write Read Glob Grep";
 #                  reviews get "Bash Read Glob Grep")
+#   SF_CONTINUE=1  carry on an existing agent/<name> (e.g. to address a review);
+#                  the push updates its PR, and the run fails without new commits
 #   SF_PUSH=0      leave the branch local, don't open a PR
 #   SF_ALLOW_ATTRIBUTION=1  push even if commits carry AI co-author trailers
 #   SF_GH          the gh command for labels and the PR (default: gh), e.g.
@@ -78,8 +80,9 @@ finish() {
     elif .subtype=="error_max_turns" then "CAP HIT: max turns (" + $t + ")"
     elif .subtype=="error_max_budget_usd" then "CAP HIT: max budget"
     else "ERROR: " + (.subtype // "unknown") end' "$d/run.jsonl" 2>/dev/null || true)
-  local commits
+  local commits new
   commits=$(git -C "$WT" log --oneline "$BASE..HEAD" 2>/dev/null | wc -l | tr -d ' ')
+  new=$(git -C "$WT" log --oneline "${START:-$BASE}..HEAD" 2>/dev/null | wc -l | tr -d ' ')
 
   local verdict
   if [ "$MODE" = review ]; then
@@ -88,7 +91,7 @@ finish() {
     elif [[ "$summary" == CAP\ HIT* || "$summary" == ERROR* ]]; then
       verdict="$summary"
     else
-      verdict="REVIEWED: $(grep -m 1 -v '^[[:space:]]*$' <<<"$summary" | cut -c1-120)"
+      verdict="REVIEWED: $(grep -m 1 -v '^[[:space:]]*$' <<<"$summary" | tr -d '*#`' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' | cut -c1-120)"
     fi
     [ -z "$(git -C "$WT" status --porcelain --untracked-files=no)" ] || verdict="$verdict (note: the review changed tracked files)"
     { echo "$verdict"; [ -n "$summary" ] && { echo; echo "$summary"; }; } > "$res"
@@ -100,6 +103,8 @@ finish() {
     verdict="$summary. Work so far is on agent/$name ($commits commits)"
   elif [ "$commits" = 0 ]; then
     verdict="FAILED: clean exit but no commits, so no PR"
+  elif [ "$new" = 0 ]; then
+    verdict="FAILED: clean exit but no new commits on agent/$name"
   elif [ ! -s "$d/pr.md" ]; then
     verdict="FAILED: $commits commits but no PR text in $d/pr.md"
   elif [ "$PUSH" != 1 ]; then
@@ -145,7 +150,7 @@ finish() {
 case "${1:-}" in
   --status) status; exit 0 ;;
   --finish) finish "$2"; exit 0 ;;
-  ""|-h|--help) sed -n '2,41p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  ""|-h|--help) sed -n '2,43p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 esac
 
 MODE=work
@@ -186,12 +191,23 @@ if [ "$MODE" = review ]; then
     die "no branch agent/$SRC to review"
   [ ! -d "$WT" ] || git -C "$REPO" worktree remove --force "$WT"
   git -C "$REPO" worktree add -q --detach "$WT" "$HEAD_SHA"
+elif [ "${SF_CONTINUE:-0}" = 1 ]; then
+  if [ ! -d "$WT" ]; then
+    if git -C "$REPO" show-ref -q --verify "refs/heads/agent/$NAME"; then
+      git -C "$REPO" worktree add -q "$WT" "agent/$NAME"
+    elif git -C "$REPO" rev-parse -q --verify "origin/agent/$NAME" >/dev/null; then
+      git -C "$REPO" worktree add -q -b "agent/$NAME" "$WT" "origin/agent/$NAME"
+    else
+      die "SF_CONTINUE=1 but there is no agent/$NAME to continue"
+    fi
+  fi
 else
   if [ -d "$WT" ] && [ -n "$(git -C "$WT" log --oneline "$BASE..HEAD")" ]; then
-    die "agent/$NAME already has commits in $WT; pick a new name or remove the worktree"
+    die "agent/$NAME already has commits in $WT; set SF_CONTINUE=1 to carry on, or pick a new name"
   fi
   [ -d "$WT" ] || git -C "$REPO" worktree add -q -B "agent/$NAME" "$WT" "$BASE"
 fi
+START=$(git -C "$WT" rev-parse HEAD)
 rm -f "$D/result" "$D/pr.md" "$D/push.err" "$D/labels.err"
 
 {
@@ -203,6 +219,7 @@ rm -f "$D/result" "$D/pr.md" "$D/push.err" "$D/labels.err"
     printf 'Finish with your verdict on line 1 (APPROVE, APPROVE WITH NITS or REQUEST CHANGES), then the findings, most important first, each with file:line.\n'
   else
   printf 'Work in this checkout, on branch agent/%s. Commit with plain messages and no AI co-author trailers.\n' "$NAME"
+  [ "${SF_CONTINUE:-0}" != 1 ] || printf 'The branch already has earlier work (git log %s..HEAD) and an open PR; build on it with new commits. Do not rewrite history.\n' "$BASE"
   printf 'Do not push and do not open the PR yourself; the launcher does that after you exit.\n'
   printf 'Before you finish, write the PR text to %s: line 1 is the title, then a blank line, then the body: what changed, why, how you checked it, and a "Closes #N" line.\n' "$D/pr.md"
   printf 'Finish with a summary of at most 10 lines. Stopping with no commits counts as a failed run, so if you are blocked, say exactly what you need decided.\n'
@@ -218,6 +235,7 @@ TIMEOUT=$(q "$TIMEOUT")
 ISSUE=$(q "$ISSUE")
 PUSH=$(q "${SF_PUSH:-1}")
 MODE=$(q "$MODE")
+START=$(q "$START")
 ALLOW_ATTRIBUTION=$(q "${SF_ALLOW_ATTRIBUTION:-0}")
 GH_CMD=$(q "$GH_CMD")
 GH_REPO=$(q "$GH_REPO")

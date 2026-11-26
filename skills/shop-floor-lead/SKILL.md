@@ -44,7 +44,9 @@ work moving and the issue list honest. Workers do the changes.
    happy with the diff. For a fresh-context review, run
    `bash launch-worker.sh --review fix-42 review-brief.md opus`: it checks out
    `agent/fix-42` detached, without Edit or Write tools, and its result starts
-   `REVIEWED: <verdict>`. Post the findings on the PR yourself. Push back on scope creep. Don't merge your own
+   `REVIEWED: <verdict>`. Post the findings on the PR yourself. To fix what it
+   found, write a short brief and relaunch the same name with
+   `SF_CONTINUE=1`: new commits on the same branch, same PR. Push back on scope creep. Don't merge your own
    unreviewed work.
 7. **Merge or hand over.** Merge only if the human said you may. Otherwise
    leave it green; `needs-me` will show it to them.

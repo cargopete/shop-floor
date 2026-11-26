@@ -64,6 +64,8 @@ for each run it makes a git worktree on branch `agent/<name>` from the default b
 - otherwise pushes the branch and opens or updates one PR, with your normal `gh` login
 - moves `worker-running` to `worker-failed` on the issue when the run didn't end in a PR
 
+`SF_CONTINUE=1` with the same name sends a worker back to its own branch, say to fix what a review found. its push updates the same PR.
+
 `--review` runs a second worker with a fresh context on a detached checkout of the branch, without edit tools, and records its verdict. it never pushes.
 
 if your workers run as a user with no github access (mine do), `SF_GH` sets the gh command and `SF_PUBLISH` swaps in your own push-and-open-PR script.
