@@ -1,0 +1,43 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -q && sudo apt-get install -y -q shellcheck tmux jq
+      - run: shellcheck skills/shop-floor-lead/*.sh tests/*.sh
+      - run: bash tests/launcher.sh
+
+  needs-me:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: needs-me
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+
+  profile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: apply the profile with kitbag into a scratch home
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/cargopete/kitbag/main/install.sh | sh
+          export PATH="$HOME/.local/bin:$PATH"
+          kitbag --version
+          home=$(mktemp -d)
+          kitbag apply . --to claude-code,codex,cursor,gemini-cli --home "$home" --yes
+          test -f "$home/.claude/skills/shop-floor-lead/launch-worker.sh"
+          test -f "$home/.agents/skills/shop-floor-worker/SKILL.md"
+          grep -q "kitbag:begin shop-floor" "$home/.claude/CLAUDE.md"
