@@ -136,6 +136,13 @@ fn classify_pr(repo: &str, pr: &Value) -> Option<Item> {
             Checks::None => (Kind::Merge, "no checks configured".to_string()),
         }
     };
+    // GitHub works out mergeability lazily, so right after the base branch
+    // moves it says UNKNOWN. Don't let that pass for "no conflicts".
+    let why = if kind == Kind::Merge && s(pr, "mergeable") == "UNKNOWN" {
+        format!("{why}; GitHub hasn't finished checking for conflicts")
+    } else {
+        why
+    };
     Some(Item {
         kind,
         repo: repo.to_string(),
@@ -185,9 +192,8 @@ fn gh(args: &[&str]) -> Result<Value, String> {
         .map_err(|e| format!("gh returned something that isn't JSON: {e}"))
 }
 
-fn collect(repo: &str) -> Result<Vec<Item>, String> {
-    let mut items = Vec::new();
-    let prs = gh(&[
+fn list_prs(repo: &str) -> Result<Value, String> {
+    gh(&[
         "pr",
         "list",
         "-R",
@@ -198,7 +204,24 @@ fn collect(repo: &str) -> Result<Vec<Item>, String> {
         "200",
         "--json",
         "number,title,url,isDraft,labels,mergeable,reviewDecision,statusCheckRollup,createdAt",
-    ])?;
+    ])
+}
+
+fn any_unknown_mergeable(prs: &Value) -> bool {
+    prs.as_array()
+        .into_iter()
+        .flatten()
+        .any(|pr| s(pr, "mergeable") == "UNKNOWN")
+}
+
+fn collect(repo: &str) -> Result<Vec<Item>, String> {
+    let mut items = Vec::new();
+    let mut prs = list_prs(repo)?;
+    // Asking is what makes GitHub compute it; one short retry usually settles it.
+    if any_unknown_mergeable(&prs) {
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        prs = list_prs(repo)?;
+    }
     for pr in prs.as_array().into_iter().flatten() {
         items.extend(classify_pr(repo, pr));
     }
@@ -403,6 +426,17 @@ mod tests {
             {"__typename": "StatusContext", "context": "ci/legacy", "state": "ERROR"}
         ]}));
         assert_eq!(kind(p), Some(Kind::Red));
+    }
+
+    #[test]
+    fn unknown_mergeability_is_flagged_not_trusted() {
+        let item = classify_pr("o/r", &pr(json!({"mergeable": "UNKNOWN"}))).unwrap();
+        assert_eq!(item.kind, Kind::Merge);
+        assert!(item.why.contains("hasn't finished checking for conflicts"));
+        assert!(any_unknown_mergeable(
+            &json!([{"mergeable": "MERGEABLE"}, {"mergeable": "UNKNOWN"}])
+        ));
+        assert!(!any_unknown_mergeable(&json!([{"mergeable": "MERGEABLE"}])));
     }
 
     #[test]
