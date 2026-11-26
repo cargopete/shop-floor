@@ -6,8 +6,12 @@ T=$(mktemp -d)
 export SF_DIR="$T/sf" TMUX_TMPDIR="$T" SF_GH_REPO=o/r
 # shellcheck disable=SC2317,SC2329  # called from the trap
 cleanup() {
+  local rc=$? s
+  set +e
+  # A run's finish step can still be writing when the checks are done.
   for s in "$T"/tmux-*/*; do [ -S "$s" ] && tmux -S "$s" kill-server 2>/dev/null; done
-  rm -rf "$T"
+  sleep 0.5; rm -rf "$T" 2>/dev/null || { sleep 1; rm -rf "$T"; }
+  exit "$rc"
 }
 trap cleanup EXIT
 git config --global user.email >/dev/null 2>&1 || { git config --global user.email ci@example.com; git config --global user.name ci; }
