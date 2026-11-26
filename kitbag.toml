@@ -1,0 +1,5 @@
+# kitbag profile: https://github.com/cargopete/kitbag
+# Apply with: kitbag apply github:cargopete/shop-floor --to claude-code
+kitbag = 1
+name = "shop-floor"
+description = "One lead agent per project, every bit of work an issue that ends in a PR, and the human only pinged for decisions"
