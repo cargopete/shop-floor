@@ -208,7 +208,13 @@ else
   [ -d "$WT" ] || git -C "$REPO" worktree add -q -B "agent/$NAME" "$WT" "$BASE"
 fi
 START=$(git -C "$WT" rev-parse HEAD)
-rm -f "$D/result" "$D/pr.md" "$D/push.err" "$D/labels.err"
+# Keep the previous run's log and result (a continue or a rerun of a review).
+if [ -s "$D/run.jsonl" ]; then
+  mkdir -p "$D/history"; H=$(mktemp -d "$D/history/$(date +%Y%m%d-%H%M%S).XXXX")
+  for f in run.jsonl result brief.md pr.md; do [ ! -e "$D/$f" ] || cp "$D/$f" "$H/"; done
+fi
+rm -f "$D/result" "$D/push.err" "$D/labels.err"
+[ "${SF_CONTINUE:-0}" = 1 ] || rm -f "$D/pr.md"
 
 {
   cat "$BRIEF"

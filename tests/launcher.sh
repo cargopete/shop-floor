@@ -107,4 +107,5 @@ else echo "FAIL continue"; fail=1; fi
 SF_CONTINUE=1 "$L" commit "$T/nothing.md" >/dev/null
 for _ in $(seq 50); do [ -s "$SF_DIR/logs/commit/result" ] && break; sleep 0.2; done
 expect commit "FAILED: clean exit but no new commits"
+if [ "$(find "$SF_DIR/logs/commit/history" -name run.jsonl | wc -l)" -ge 2 ]; then echo "ok   earlier runs kept in history"; else echo "FAIL history"; fail=1; fi
 exit $fail
