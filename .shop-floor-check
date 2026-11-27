@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Typecheck for this repo. Other projects can add their own file, or set SF_CHECK.
+set -euo pipefail
+cd "$(dirname "$0")/needs-me"
+cargo check --locked

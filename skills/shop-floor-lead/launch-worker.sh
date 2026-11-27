@@ -222,7 +222,7 @@ rm -f "$D/result" "$D/push.err" "$D/labels.err"
   if [ "$MODE" = review ]; then
     printf 'This is a review run. The checkout is branch agent/%s at %s; review it against %s (git diff %s...HEAD).\n' "$SRC" "$HEAD_SHA" "$BASE" "$BASE"
     printf 'Do not edit tracked files, commit or push. You may build and run the tests.\n'
-    printf 'Finish with your verdict on line 1 (APPROVE, APPROVE WITH NITS or REQUEST CHANGES), then the findings, most important first, each with file:line.\n'
+    printf 'Finish with your verdict on line 1 (APPROVE, APPROVE WITH NITS or REQUEST CHANGES), then one finding per line, most important first, as: path:line, severity, issue, fix. Severity is error, warning or nit. Use path:0 if there is no line.\n'
   else
   printf 'Work in this checkout, on branch agent/%s. Commit with plain messages and no AI co-author trailers.\n' "$NAME"
   [ "${SF_CONTINUE:-0}" != 1 ] || printf 'The branch already has earlier work (git log %s..HEAD) and an open PR; build on it with new commits. Do not rewrite history.\n' "$BASE"

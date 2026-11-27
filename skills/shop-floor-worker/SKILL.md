@@ -17,8 +17,14 @@ watching the chat. Your output is a branch, PR text and a short summary.
    you exit.
 3. **Commit as you go**, small commits with plain messages. No AI co-author
    trailers and no "generated with" lines; the launcher refuses to push them.
-4. **Check your work** with the commands in the brief (build, tests, lint).
-   Every claim says how you checked it, or is marked UNVERIFIED.
+4. **Check your work.** After you edit source files, run this skill's
+   `post-edit-check.sh` with bash (it auto-detects `cargo check`, a
+   `typecheck` script, `tsc --noEmit` or `go build`, or uses `$SF_CHECK` /
+   a `.shop-floor-check` in the repo). It must pass. Then run the commands
+   in the brief (build, tests, lint). Every claim says how you checked it,
+   or is marked UNVERIFIED. kitbag doesn't carry hooks, so this script is
+   the required step on every tool; `claude-code-hook.json` next to it is
+   an optional Claude Code hook you can copy into settings yourself.
 5. **Write the PR text** to the file the brief or launcher names: line 1 the
    title, a blank line, then what changed, why, how you checked it, and
    `Closes #N` (or `Part of #N` plus what's left).

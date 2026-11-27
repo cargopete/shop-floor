@@ -15,6 +15,11 @@ matters.
 - <files, functions, docs, related issues or PRs>
 
 ## Check
+- After source edits, run the shop-floor-worker skill's `post-edit-check.sh`
+  with bash. It must pass. It auto-detects `cargo check`, a `typecheck`
+  script, `tsc --noEmit` or `go build`, or uses `$SF_CHECK` / a
+  `.shop-floor-check` in the repo. kitbag doesn't carry hooks, so this is
+  the required typecheck on every tool.
 - <exact commands: build, tests, lint, a manual run>
 - Every claim in your summary says how you checked it, or is marked UNVERIFIED.
 
