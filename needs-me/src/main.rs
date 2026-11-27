@@ -10,6 +10,11 @@
 //!
 //! Everything else (drafts, running checks, `worker-running`) is left alone,
 //! because it doesn't need you yet.
+//!
+//! Follow-ups (open issues labelled `followup`, and open `- [ ]` entries in
+//! a `.followups.md` at the root of the repo you're in) are backlog, not
+//! something waiting on you: they get a count per repo under the list, and
+//! `--followups` lists them. They never change the exit code of a normal run.
 
 use serde_json::{json, Value};
 use std::process::{Command, ExitCode};
@@ -17,12 +22,17 @@ use std::process::{Command, ExitCode};
 const DECISION_LABEL: &str = "needs-decision";
 const RUNNING_LABEL: &str = "worker-running";
 const FAILED_LABEL: &str = "worker-failed";
+const FOLLOWUP_LABEL: &str = "followup";
+const FOLLOWUPS_FILE: &str = ".followups.md";
+/// Most follow-up issues fetched per repo; a count at the cap shows as `N+`.
+const FOLLOWUP_LIMIT: usize = 1000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Kind {
     Decide,
     Red,
     Merge,
+    Followup,
 }
 
 impl Kind {
@@ -31,6 +41,7 @@ impl Kind {
             Kind::Decide => "decide",
             Kind::Red => "red",
             Kind::Merge => "merge",
+            Kind::Followup => "followup",
         }
     }
 }
@@ -251,6 +262,76 @@ fn collect(repo: &str) -> Result<Vec<Item>, String> {
     Ok(items)
 }
 
+fn list_followups(repo: &str) -> Result<Vec<Item>, String> {
+    let issues = gh(&[
+        "issue",
+        "list",
+        "-R",
+        repo,
+        "--state",
+        "open",
+        "--label",
+        FOLLOWUP_LABEL,
+        "--limit",
+        &FOLLOWUP_LIMIT.to_string(),
+        "--json",
+        "number,title,url,createdAt",
+    ])?;
+    Ok(issues
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|i| followup_item(repo, i))
+        .collect())
+}
+
+fn followup_item(repo: &str, issue: &Value) -> Item {
+    Item {
+        kind: Kind::Followup,
+        repo: repo.to_string(),
+        number: issue.get("number").and_then(Value::as_u64).unwrap_or(0),
+        is_pr: false,
+        title: s(issue, "title").to_string(),
+        url: s(issue, "url").to_string(),
+        created: s(issue, "createdAt").to_string(),
+        why: format!("labelled {FOLLOWUP_LABEL}"),
+    }
+}
+
+/// Titles of the open entries (`- [ ] title`) in a `.followups.md`.
+fn open_followups_in(text: &str) -> Vec<String> {
+    text.lines()
+        .filter_map(|l| {
+            l.strip_prefix("- [ ] ")
+                .or_else(|| l.strip_prefix("* [ ] "))
+        })
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+        .collect()
+}
+
+/// The `.followups.md` at the root of the git repo you're in (or the current
+/// directory outside git), if there is one.
+fn local_followups_file() -> Option<std::path::PathBuf> {
+    let root = Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|r| !r.is_empty())
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::current_dir().ok())?;
+    let path = root.join(FOLLOWUPS_FILE);
+    path.is_file().then_some(path)
+}
+
+fn backlog_line(place: &str, n: usize) -> String {
+    let what = if n == 1 { "follow-up" } else { "follow-ups" };
+    let plus = if n >= FOLLOWUP_LIMIT { "+" } else { "" };
+    format!("backlog: {n}{plus} open {what} in {place} (needs-me --followups)")
+}
+
 fn line(i: &Item) -> String {
     let tag = if i.is_pr { "PR" } else { "issue" };
     format!(
@@ -265,7 +346,7 @@ fn line(i: &Item) -> String {
     )
 }
 
-const USAGE: &str = "usage: needs-me [--json] [--next] [owner/repo ...]
+const USAGE: &str = "usage: needs-me [--json] [--next] [--followups] [owner/repo ...]
 
 Lists only what needs you across the given repos (or $NEEDS_ME_REPOS,
 space- or comma-separated, or the repo you're in):
@@ -275,20 +356,28 @@ space- or comma-separated, or the repo you're in):
           labelled worker-failed
   merge   green PRs waiting for someone to merge them
 
-  --json  print a JSON array instead of text
-  --next  print only the single oldest, most important item
+  --json       print a JSON array instead of text
+  --next       print only the single oldest, most important item
+  --followups  list the follow-up backlog instead: open issues labelled
+               followup, plus open entries in .followups.md at the root
+               of the repo you're in
 
-Uses your existing gh login. Exits 0 when nothing needs you, 1 when
-something does, 2 on errors.";
+Without --followups, the text output ends with a count of open
+follow-ups per repo. They're backlog, so they don't change the exit code.
+
+Uses your existing gh login. Exits 0 when nothing needs you (or, with
+--followups, when there are none), 1 when something does, 2 on errors.";
 
 fn main() -> ExitCode {
     let mut json_out = false;
     let mut next = false;
+    let mut followups = false;
     let mut repos: Vec<String> = Vec::new();
     for a in std::env::args().skip(1) {
         match a.as_str() {
             "--json" => json_out = true,
             "--next" => next = true,
+            "--followups" => followups = true,
             "-h" | "--help" => {
                 println!("{USAGE}");
                 return ExitCode::SUCCESS;
@@ -319,6 +408,9 @@ fn main() -> ExitCode {
             Ok(v) if !s(&v, "nameWithOwner").is_empty() => {
                 repos.push(s(&v, "nameWithOwner").to_string())
             }
+            // --followups can still read .followups.md, which is where
+            // file-followup.sh writes when there's no GitHub remote.
+            _ if followups && local_followups_file().is_some() => {}
             _ => {
                 eprintln!("needs-me: no repos given and not in a GitHub repo\n\n{USAGE}");
                 return ExitCode::from(2);
@@ -333,11 +425,19 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     }
 
+    if followups {
+        return run_followups(&repos, json_out, next);
+    }
+
     let mut items = Vec::new();
     let mut failed = false;
+    let mut ok_repos = Vec::new();
     for repo in &repos {
         match collect(repo) {
-            Ok(mut found) => items.append(&mut found),
+            Ok(mut found) => {
+                items.append(&mut found);
+                ok_repos.push(repo.clone());
+            }
             Err(e) => {
                 eprintln!("needs-me: {repo}: {e}");
                 failed = true;
@@ -355,19 +455,116 @@ fn main() -> ExitCode {
             "{}",
             serde_json::to_string_pretty(&Value::Array(arr)).unwrap_or_default()
         );
-    } else if items.is_empty() {
-        if !failed {
-            println!("nothing needs you.");
-        }
     } else {
-        for i in &items {
-            println!("{}", line(i));
+        if items.is_empty() {
+            if !failed {
+                println!("nothing needs you.");
+            }
+        } else {
+            for i in &items {
+                println!("{}", line(i));
+            }
+        }
+        if !next {
+            print_backlog(&ok_repos);
         }
     }
 
     if failed {
         ExitCode::from(2)
     } else if items.is_empty() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
+}
+
+/// One count line per repo (and the local file) with open follow-ups. A
+/// failure here only warns: the backlog is never what the run is about.
+fn print_backlog(repos: &[String]) {
+    let mut lines = Vec::new();
+    for repo in repos {
+        match list_followups(repo) {
+            Ok(f) if !f.is_empty() => lines.push(backlog_line(repo, f.len())),
+            Ok(_) => {}
+            Err(e) => eprintln!("needs-me: {repo}: couldn't count follow-ups: {e}"),
+        }
+    }
+    if let Some(path) = local_followups_file() {
+        if let Ok(text) = std::fs::read_to_string(&path) {
+            let n = open_followups_in(&text).len();
+            if n > 0 {
+                lines.push(backlog_line(&path.display().to_string(), n));
+            }
+        }
+    }
+    if !lines.is_empty() {
+        println!();
+        for l in lines {
+            println!("{l}");
+        }
+    }
+}
+
+fn run_followups(repos: &[String], json_out: bool, next: bool) -> ExitCode {
+    let mut items = Vec::new();
+    let mut failed = false;
+    for repo in repos {
+        match list_followups(repo) {
+            Ok(mut f) => items.append(&mut f),
+            Err(e) => {
+                eprintln!("needs-me: {repo}: {e}");
+                failed = true;
+            }
+        }
+    }
+    sort(&mut items);
+    let local: Vec<(String, String)> = local_followups_file()
+        .and_then(|p| {
+            let text = std::fs::read_to_string(&p).ok()?;
+            let place = p.display().to_string();
+            Some(
+                open_followups_in(&text)
+                    .into_iter()
+                    .map(|t| (place.clone(), t))
+                    .collect(),
+            )
+        })
+        .unwrap_or_default();
+
+    let mut out: Vec<Value> = items.iter().map(Item::to_json).collect();
+    out.extend(local.iter().map(
+        |(file, title)| json!({"kind": "followup", "type": "file", "file": file, "title": title}),
+    ));
+    if next {
+        out.truncate(1);
+    }
+
+    if json_out {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&Value::Array(out.clone())).unwrap_or_default()
+        );
+    } else if out.is_empty() {
+        if !failed {
+            println!("no open follow-ups.");
+        }
+    } else {
+        let shown = out.len();
+        for i in items.iter().take(shown) {
+            println!(
+                "followup {}#{} {}\n         {}",
+                i.repo, i.number, i.title, i.url
+            );
+        }
+        for (file, title) in local.iter().take(shown.saturating_sub(items.len())) {
+            println!("followup {file}: {title}");
+        }
+    }
+
+    if failed {
+        ExitCode::from(2)
+    } else if out.is_empty() {
         ExitCode::SUCCESS
     } else {
         ExitCode::from(1)
@@ -484,6 +681,36 @@ mod tests {
         assert_eq!(classify_issue("o/r", &decide).kind, Kind::Decide);
         assert_eq!(classify_issue("o/r", &failed).kind, Kind::Red);
         assert_eq!(classify_issue("o/r", &failed).why, "labelled worker-failed");
+    }
+
+    #[test]
+    fn followups_file_counts_only_open_entries() {
+        let text = "# Follow-ups\n\n- [ ] Parser drops trailing comma\n  - where: `src/p.rs:12`\n- [x] Done one\n* [ ] Star bullet works too\n- [ ]   \n  - [ ] indented detail isn't an entry\n";
+        assert_eq!(
+            open_followups_in(text),
+            vec!["Parser drops trailing comma", "Star bullet works too"]
+        );
+        assert!(open_followups_in("").is_empty());
+    }
+
+    #[test]
+    fn followup_issues_are_their_own_pile() {
+        let i = followup_item(
+            "o/r",
+            &json!({"number": 9, "title": "t", "url": "u", "createdAt": "2026-01-01"}),
+        );
+        assert_eq!(i.kind, Kind::Followup);
+        assert_eq!(i.to_json()["kind"], "followup");
+        assert!(Kind::Merge < Kind::Followup);
+        assert_eq!(
+            backlog_line("o/r", 1),
+            "backlog: 1 open follow-up in o/r (needs-me --followups)"
+        );
+        assert_eq!(
+            backlog_line("o/r", 3),
+            "backlog: 3 open follow-ups in o/r (needs-me --followups)"
+        );
+        assert!(backlog_line("o/r", FOLLOWUP_LIMIT).contains(&format!("{FOLLOWUP_LIMIT}+ open")));
     }
 
     #[test]

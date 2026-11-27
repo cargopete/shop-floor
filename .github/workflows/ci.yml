@@ -10,9 +10,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: sudo apt-get update -q && sudo apt-get install -y -q shellcheck tmux jq
-      - run: shellcheck skills/shop-floor-lead/*.sh skills/shop-floor-worker/*.sh tests/*.sh
+      - run: shellcheck skills/shop-floor-lead/*.sh skills/shop-floor-worker/*.sh skills/shop-floor-followups/*.sh tests/*.sh
       - run: bash tests/launcher.sh
       - run: bash tests/post-edit-check.sh
+      - run: bash tests/file-followup.sh
 
   needs-me:
     runs-on: ubuntu-latest
@@ -46,4 +47,8 @@ jobs:
           test -f "$home/.claude/skills/shop-floor-worker/post-edit-check.sh"
           test -f "$home/.claude/skills/shop-floor-worker/claude-code-hook.json"
           test -f "$home/.agents/skills/shop-floor-reviewer/SKILL.md"
+          test -f "$home/.claude/skills/shop-floor-followups/file-followup.sh"
+          test -f "$home/.agents/skills/shop-floor-followups/file-followup.sh"
+          test -f "$home/.claude/rules/followups.md"
+          test -f "$home/.claude/commands/followup.md"
           grep -q "kitbag:begin shop-floor" "$home/.claude/CLAUDE.md"

@@ -11,6 +11,7 @@ alwaysApply: false
 | `worker-running` | issue | a headless worker is on it right now; leave it alone | the launcher (removed when the run ends) |
 | `worker-failed` | issue | the last run ended without a PR (cap hit, crash or gave up); the result is in a comment | the launcher, or the lead after reading the result |
 | `agent` | issue | small and clear enough to hand to a worker | the lead |
+| `followup` | issue | found while doing something else; out of scope then, worth doing later | anyone, via the shop-floor-followups skill |
 
 Rules of thumb:
 
@@ -21,4 +22,5 @@ Rules of thumb:
   swap it for `worker-failed`.
 - `needs-me` (in this repo) lists `needs-decision` and `worker-failed` items,
   failing PRs and green PRs. Anything else isn't waiting on a human.
+  `followup` issues are backlog: `needs-me` counts them under the list.
 - Create the labels once per repo with the lead skill's `labels.sh`.

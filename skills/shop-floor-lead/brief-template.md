@@ -9,6 +9,9 @@ matters.
 
 ## Don't
 - No drive-by refactors, renames, dependency or version bumps.
+- Problems outside this issue are follow-ups: list them under **Follow-ups**
+  in the PR text and summary as `title | path:line | why | fix`. Don't fix
+  them.
 - <anything else out of scope>
 
 ## Where to look
@@ -34,4 +37,4 @@ matters.
 - PR text: title, then what changed, why, how you checked it, `Closes #<issue>`
   (or `Part of #<issue>` and what's left).
 - Final summary, at most 10 lines: DONE, PARTIAL or BLOCKED on line 1, then
-  what you did, checks run and results, anything left.
+  what you did, checks run and results, anything left, and the follow-ups.

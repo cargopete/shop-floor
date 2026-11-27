@@ -14,8 +14,10 @@ questions and repos that don't use GitHub issues.
 - The human is only asked for decisions. Put the question on the issue or PR,
   add the `needs-decision` label and move on to something else. Don't ask in
   chat what an issue comment can hold.
-- Labels carry state: `needs-decision`, `worker-running`, `worker-failed`
-  and `agent`. See the shop-floor-labels rule.
+- Labels carry state: `needs-decision`, `worker-running`, `worker-failed`,
+  `agent` and `followup`. See the shop-floor-labels rule.
+- Fix only what the change broke or is about. Everything else you find is a
+  `followup` issue (the shop-floor-followups skill), not part of this PR.
 - A worker that exits cleanly without a PR has failed. Say so; don't report it
   as done.
 - "Done" means checked. Say how you checked it, or mark it UNVERIFIED.

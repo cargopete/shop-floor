@@ -222,12 +222,13 @@ rm -f "$D/result" "$D/push.err" "$D/labels.err"
   if [ "$MODE" = review ]; then
     printf 'This is a review run. The checkout is branch agent/%s at %s; review it against %s (git diff %s...HEAD).\n' "$SRC" "$HEAD_SHA" "$BASE" "$BASE"
     printf 'Do not edit tracked files, commit or push. You may build and run the tests.\n'
-    printf 'Finish with your verdict on line 1 (APPROVE, APPROVE WITH NITS or REQUEST CHANGES), then one finding per line, most important first, as: path:line, severity, issue, fix. Severity is error, warning or nit. Use path:0 if there is no line.\n'
+    printf 'Finish with your verdict on line 1 (APPROVE, APPROVE WITH NITS or REQUEST CHANGES), then one finding per line, most important first, as: path:line, severity, issue, fix. Severity is error, warning, nit or followup (a real problem this change did not cause and does not need to fix; followups do not change the verdict). Use path:0 if there is no line.\n'
   else
   printf 'Work in this checkout, on branch agent/%s. Commit with plain messages and no AI co-author trailers.\n' "$NAME"
   [ "${SF_CONTINUE:-0}" != 1 ] || printf 'The branch already has earlier work (git log %s..HEAD) and an open PR; build on it with new commits. Do not rewrite history.\n' "$BASE"
   printf 'Do not push and do not open the PR yourself; the launcher does that after you exit.\n'
   printf 'Before you finish, write the PR text to %s: line 1 is the title, then a blank line, then the body: what changed, why, how you checked it, and a "Closes #N" line.\n' "$D/pr.md"
+  printf 'Problems outside the brief are follow-ups: do not fix them, and do not write .followups.md. List them under a "Follow-ups" heading at the end of the PR text and in your summary, one per line as: title | path:line | why it matters | suggested fix. The lead files them.\n'
   printf 'Finish with a summary of at most 10 lines. Stopping with no commits counts as a failed run, so if you are blocked, say exactly what you need decided.\n'
   fi
 } > "$D/brief.md"
@@ -255,9 +256,10 @@ ARGS=(--model "$MODEL" --max-turns "$MAX_TURNS"
 [ -z "${SF_MAX_BUDGET:-}" ] || ARGS+=(--max-budget-usd "$SF_MAX_BUDGET")
 [ -z "${SF_EFFORT:-}" ] || ARGS+=(--effort "$SF_EFFORT")
 # The brief is read when the session starts, so long briefs never hit tmux limits.
-# The worker runs without GitHub tokens in its env; the PR step afterwards uses
+# The worker runs without GitHub tokens in its env, with SF_WORKER=1 so
+# file-followup.sh hands follow-ups back instead of filing them; the PR step afterwards uses
 # your normal gh login (or SF_GH / SF_PUBLISH).
-CMD="cd $(q "$WT") && (unset GH_TOKEN GITHUB_TOKEN; timeout $(q "$TIMEOUT") claude -p \"\$(cat $(q "$D/brief.md"))\""
+CMD="cd $(q "$WT") && (unset GH_TOKEN GITHUB_TOKEN; export SF_WORKER=1; timeout $(q "$TIMEOUT") claude -p \"\$(cat $(q "$D/brief.md"))\""
 for a in "${ARGS[@]}"; do CMD+=" $(q "$a")"; done
 CMD+=" > $(q "$D/run.jsonl") 2>&1); SF_DIR=$(q "$SF_DIR") bash $(q "$(cd "$(dirname "$0")" && pwd)/$(basename "$0")") --finish $(q "$NAME")"
 

@@ -9,8 +9,11 @@ You were started headless with a brief for one GitHub issue. Nobody is
 watching the chat. Your output is a branch, PR text and a short summary.
 
 1. **Read the brief, then the issue** (`gh issue view <n> --comments` if `gh`
-   works; the brief is enough if it doesn't). Do only what they ask. Note
-   other problems in your summary; don't fix them.
+   works; the brief is enough if it doesn't). Do only what they ask. Other
+   problems you find are follow-ups (see the shop-floor-followups skill):
+   don't fix them, list them under **Follow-ups** in the PR text and your
+   summary as `title | path:line | why | fix`. You have no GitHub token, so
+   the lead files them.
 2. **Stay put.** Work in the checkout you were started in, on the
    `agent/<name>` branch you're on. Don't switch branches, push, open PRs,
    comment, merge, tag or publish. The launcher pushes and opens the PR after
@@ -27,10 +30,11 @@ watching the chat. Your output is a branch, PR text and a short summary.
    an optional Claude Code hook you can copy into settings yourself.
 5. **Write the PR text** to the file the brief or launcher names: line 1 the
    title, a blank line, then what changed, why, how you checked it, and
-   `Closes #N` (or `Part of #N` plus what's left).
+   `Closes #N` (or `Part of #N` plus what's left), then the **Follow-ups**
+   list if there is one.
 6. **Finish with a summary** of at most 10 lines: `DONE`, `PARTIAL` or
-   `BLOCKED` on line 1, then what you did, the checks and their results, and
-   anything left.
+   `BLOCKED` on line 1, then what you did, the checks and their results,
+   anything left, and the follow-ups.
 
 A clean exit with no commits or no PR text is recorded as a failed run.
 If you're blocked (a login wall, a permission error, a decision only the

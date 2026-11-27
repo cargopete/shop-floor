@@ -9,5 +9,6 @@ for repo in "$@"; do
   "${GH[@]}" label create worker-running --repo "$repo" --force --color FBCA04 --description "A headless worker is on this right now"
   "${GH[@]}" label create worker-failed --repo "$repo" --force --color B60205 --description "The last worker run ended without a PR"
   "${GH[@]}" label create agent --repo "$repo" --force --color 0E8A16 --description "Small and clear enough to hand to a worker"
+  "${GH[@]}" label create followup --repo "$repo" --force --color C5DEF5 --description "Found while doing something else; out of scope then, worth doing"
   echo "labels ready on $repo"
 done
