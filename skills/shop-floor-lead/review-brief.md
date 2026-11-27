@@ -25,6 +25,6 @@ path:line, severity, issue, fix
 
 - don't edit tracked files, commit, push or open a PR
 - don't request changes for style nits only; those are APPROVE WITH NITS
-- don't mark it APPROVE if there's an error-level finding
+- APPROVE means no error, warning or nit findings; followups don't count
 
 The lead posts your findings on the PR and files followup findings as `followup` issues. REQUEST CHANGES means the lead sends a worker back with SF_CONTINUE=1; the PR isn't ready until a later pass is APPROVE or APPROVE WITH NITS.

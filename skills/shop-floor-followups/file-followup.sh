@@ -29,7 +29,12 @@
 set -euo pipefail
 
 usage() { awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"; }
-need() { [ $# -ge 2 ] || { echo "file-followup.sh: $1 needs a value" >&2; exit 2; }; }
+need() {
+  if [ $# -lt 2 ] || [[ $2 == --* ]]; then
+    echo "file-followup.sh: $1 needs a value" >&2
+    exit 2
+  fi
+}
 flat() { tr '\n\t' '  ' <<<"$1" | sed 's/^ *//; s/ *$//'; }
 
 title="" where="" why="" fix="" from="" repo="" force_file=0
@@ -50,7 +55,8 @@ done
 
 if [ "${SF_WORKER:-0}" = 1 ]; then
   echo "not filed: headless workers have no GitHub token. Add this line under **Follow-ups** in your PR text and summary; the lead files it:"
-  echo "- $title | ${where:--} | ${why:--} | ${fix:--}"
+  bar() { [ -n "$1" ] && printf '%s' "${1//|//}" || printf -- '-'; }
+  echo "- $(bar "$title") | $(bar "$where") | $(bar "$why") | $(bar "$fix")"
   exit 0
 fi
 
@@ -59,7 +65,10 @@ root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 
 to_file() {
   local f="$root/.followups.md"
-  if [ -f "$f" ] && grep -Fxqi -- "- [ ] $title" "$f"; then
+  if [ -f "$f" ] && awk -v want="$title" '
+      /^[-*] \[ \] / { t = substr($0, 7); sub(/[ \t]+$/, "", t); sub(/^[ \t]+/, "", t)
+                       if (tolower(t) == tolower(want)) { found = 1; exit } }
+      END { exit !found }' "$f"; then
     echo "already in $f: $title"
     return 0
   fi

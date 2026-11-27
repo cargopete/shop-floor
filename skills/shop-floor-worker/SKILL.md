@@ -33,8 +33,8 @@ watching the chat. Your output is a branch, PR text and a short summary.
    `Closes #N` (or `Part of #N` plus what's left), then the **Follow-ups**
    list if there is one.
 6. **Finish with a summary** of at most 10 lines: `DONE`, `PARTIAL` or
-   `BLOCKED` on line 1, then what you did, the checks and their results, and
-   anything left.
+   `BLOCKED` on line 1, then what you did, the checks and their results,
+   anything left, and the follow-ups.
 
 A clean exit with no commits or no PR text is recorded as a failed run.
 If you're blocked (a login wall, a permission error, a decision only the

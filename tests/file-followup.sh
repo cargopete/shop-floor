@@ -122,18 +122,34 @@ else
   bad "file dedupe case rc=$rc out=$out"
 fi
 
+# A hand-edited star entry with trailing spaces still counts as the same title.
+printf '* [ ] Hand Edited   \n' >>"$T/repo/.followups.md"
+before=$(wc -l <"$T/repo/.followups.md")
+run "$T/repo" bash "$S" --file --title "hand edited"
+if [ "$rc" = 0 ] && [ "$(wc -l <"$T/repo/.followups.md")" = "$before" ]; then
+  ok ".followups.md dedupe matches star bullets and trailing spaces"
+else
+  bad "file dedupe star rc=$rc out=$out"
+fi
+
 # A headless worker files nothing and gets the line for its PR text.
 : >"$T/log"
 cp "$T/repo/.followups.md" "$T/before.md"
-run "$T/repo" env SF_WORKER=1 bash "$S" --title "Worker finding" --where a.rs:1 --why w --fix f
+run "$T/repo" env SF_WORKER=1 bash "$S" --title "Worker finding" --where a.rs:1 --why "a|b" --fix f
 if [ "$rc" = 0 ] && [ ! -s "$T/log" ] && cmp -s "$T/before.md" "$T/repo/.followups.md" &&
-  grep -qx -- "- Worker finding | a.rs:1 | w | f" <<<"$out"; then
+  grep -qx -- "- Worker finding | a.rs:1 | a/b | f" <<<"$out"; then
   ok "SF_WORKER=1 hands the follow-up back"
 else
   bad "worker rc=$rc out=$out"
 fi
 
 # Usage errors.
+run "$T/repo" bash "$S" --title --where x
+if [ "$rc" = 2 ] && grep -q -- "--title needs a value" <<<"$out"; then
+  ok "a flag isn't taken as a value"
+else
+  bad "flag as value rc=$rc out=$out"
+fi
 run "$T/repo" bash "$S" --title
 if [ "$rc" = 2 ] && grep -q -- "--title needs a value" <<<"$out"; then
   ok "a flag without a value is a usage error"
