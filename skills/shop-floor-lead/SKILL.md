@@ -34,7 +34,9 @@ work moving and the issue list honest. Workers do the changes.
    two is a sane start.
 5. **Check the result**, not the exit code. `launch-worker.sh --status` shows
    one line per run. The first line of each result is one of:
-   - `DONE: <PR url>`: review it.
+   - `DONE: <PR url>`: review it. File the worker's **Follow-ups** list
+     (in its summary and PR text) with the shop-floor-followups skill's
+     `file-followup.sh`, `--from` the PR. Workers have no GitHub token.
    - `FAILED: ...`: a clean exit with no commits or no PR text counts here.
      Read the summary, fix the brief or mark the issue `worker-failed` with a
      comment saying why.
@@ -47,7 +49,8 @@ work moving and the issue list honest. Workers do the changes.
    `review-brief.md` from this skill directory: it checks out `agent/fix-42`
    detached, without Edit or Write tools, and its result starts
    `REVIEWED: <verdict>`. Findings are `path:line, severity, issue, fix`.
-   Post them on the PR yourself. `REQUEST CHANGES` means write a short brief
+   Post them on the PR yourself, and file `followup` findings as follow-up
+   issues instead of sending the worker after them. `REQUEST CHANGES` means write a short brief
    and relaunch the same name with `SF_CONTINUE=1`: new commits on the same
    branch, same PR, then review again. Push back on scope creep. Don't merge
    your own unreviewed work, and don't hand a PR over as ready before this

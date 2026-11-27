@@ -23,12 +23,16 @@ output is a verdict and a list of findings.
    ```
 
    - `path:line` is the file and line on the branch (`path:0` if it isn't a line)
-   - `severity` is `error`, `warning` or `nit`
+   - `severity` is `error`, `warning`, `nit` or `followup`. Use `followup`
+     for a real problem this change didn't cause and doesn't need to fix
+     (old code, a flaky test, a missing check elsewhere); the lead files it
+     as a `followup` issue instead of holding the PR
    - `issue` is what's wrong, in a few words
    - `fix` is what you'd do instead, in a few words
 
 4. **Pick the verdict honestly.** Any `error` finding means `REQUEST CHANGES`.
-   Style nits alone are `APPROVE WITH NITS`. `APPROVE` means you have no
+   Style nits alone are `APPROVE WITH NITS`. `followup` findings don't
+   change the verdict. `APPROVE` means you have no
    findings. The PR isn't ready until a pass comes back `APPROVE` or
    `APPROVE WITH NITS`.
 

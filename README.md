@@ -13,6 +13,7 @@ the longer story, with the honest numbers, is in the article: https://x.com/carg
 - needs-me, the inbox of what's waiting on you
 - a post-edit typecheck workers have to run (kitbag doesn't carry hooks; a claude code hook snippet is in the worker skill if you want it)
 - a reviewer that returns `path:line, severity, issue, fix` verdicts before a PR is marked ready
+- follow-ups: the agent fixes only what its change broke, files everything else it finds as a `followup` issue (or `.followups.md`), and stops
 
 ## install
 
@@ -42,8 +43,9 @@ cargo install --git https://github.com/cargopete/shop-floor needs-me
 | `worker-running` | a worker is on it right now |
 | `worker-failed` | the last run ended without a PR |
 | `agent` | small and clear enough to hand to a worker |
+| `followup` | found while doing something else; out of scope then, worth doing later |
 
-`labels.sh owner/repo` in the lead skill creates them.
+`labels.sh owner/repo` in the lead skill creates them. `file-followup.sh` creates `followup` on its own if it's missing.
 
 **the lead skill** (`skills/shop-floor-lead`). the loop the lead follows: issue, decide or ask, brief, launch, check the result, review, merge or hand over. comes with:
 
@@ -56,7 +58,27 @@ cargo install --git https://github.com/cargopete/shop-floor needs-me
 
 **the reviewer** (`skills/shop-floor-reviewer`, plus `review-brief.md` in the lead skill). a fresh-context pass the lead runs before a PR is marked ready. the result is a verdict (`APPROVE`, `APPROVE WITH NITS` or `REQUEST CHANGES`) and findings as `path:line, severity, issue, fix`. `launch-worker.sh --review` uses this; REQUEST CHANGES goes back to the worker with `SF_CONTINUE=1`.
 
-**commands**: `/brief <issue>` writes a worker brief, `/needs-me` lists what's waiting on you, `/summary` writes the PR summary for the current branch.
+**commands**: `/brief <issue>` writes a worker brief, `/needs-me` lists what's waiting on you, `/summary` writes the PR summary for the current branch, `/followup <what's wrong>` files one follow-up by hand.
+
+## follow-ups
+
+agents keep finding things that aren't the job: a bug in code they only read, a flaky test, a missing check. in a chat that finding either turns into scope creep or it scrolls away and dies with the session. this is the fix for that (the shape is the one asked for in [anthropics/claude-code#112120](https://github.com/anthropics/claude-code/issues/112120)), and because it's plain rules, a skill and a command, kitbag carries it to every tool, not just claude code.
+
+- **the rule** (`rules/followups.md`, always on): fix only what this change broke or is about. everything else gets filed, not fixed. when the task is done, list what you filed and stop. no "should i also...?".
+- **the skill** (`skills/shop-floor-followups`): `file-followup.sh` opens a github issue labelled `followup` with a title, `path:line`, why it matters, a suggested fix and a link back to the PR or issue it came from. it creates the label if it's missing and won't file the same open title twice. with no github remote, no `gh`, `--file`, or when `gh` can't create the issue, it appends a `- [ ]` entry to `.followups.md` at the repo root instead, so nothing gets dropped.
+- **`/followup`**: file one by hand, mid-task, without derailing it.
+- **workers and the reviewer**: workers have no github token, so they list follow-ups in the PR text and the lead files them. the reviewer has a `followup` severity for real problems the PR didn't cause; those don't hold the PR.
+- **needs-me** counts open follow-ups per repo under its list, and `needs-me --followups` lists them. they're backlog, so they don't change the exit code.
+
+```sh
+bash ~/.claude/skills/shop-floor-followups/file-followup.sh \
+  --title "Parser drops a trailing comma" --where src/parse.rs:120 \
+  --why "configs written by tool X fail to load" \
+  --fix "accept an optional comma before the closing bracket" \
+  --from https://github.com/you/repo/pull/42
+```
+
+it's a convention plus a script. nothing stops an agent that ignores the rule, but the rule is short and in every tool's instructions, and the reviewer pass catches scope creep.
 
 ## the launcher
 
@@ -99,8 +121,9 @@ it lists only what needs you: issues and PRs labelled `needs-decision`, PRs with
 
 - `--json` for scripts, or for a bot that posts you a digest
 - `--next` for just the top one
+- `--followups` lists the follow-up backlog instead (open `followup` issues, plus open entries in `.followups.md` in the repo you're in). without it, a `backlog: N open follow-ups in owner/repo` line per repo closes the list
 - repos come from the arguments, `$NEEDS_ME_REPOS`, or the repo you're in
-- exits 0 when nothing needs you, 1 when something does, 2 on errors
+- exits 0 when nothing needs you, 1 when something does, 2 on errors. follow-ups never count as needing you, except under `--followups`, where 1 means there are some
 
 it's a thin wrapper over `gh`, so it uses whatever login `gh` has.
 
