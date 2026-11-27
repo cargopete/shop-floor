@@ -67,7 +67,7 @@ agents keep finding things that aren't the job: a bug in code they only read, a 
 - **the rule** (`rules/followups.md`, always on): fix only what this change broke or is about. everything else gets filed, not fixed. when the task is done, list what you filed and stop. no "should i also...?".
 - **the skill** (`skills/shop-floor-followups`): `file-followup.sh` opens a github issue labelled `followup` with a title, `path:line`, why it matters, a suggested fix and a link back to the PR or issue it came from. it creates the label if it's missing and won't file the same open title twice. with no github remote, no `gh`, `--file`, or when `gh` can't create the issue, it appends a `- [ ]` entry to `.followups.md` at the repo root instead, so nothing gets dropped.
 - **`/followup`**: file one by hand, mid-task, without derailing it.
-- **workers and the reviewer**: workers have no github token, so they list follow-ups in the PR text and the lead files them. the reviewer has a `followup` severity for real problems the PR didn't cause; those don't hold the PR.
+- **workers and the reviewer**: workers have no github token, so they list follow-ups in the PR text and the lead files them (the launcher sets `SF_WORKER=1`, and under it the script only prints the line to list). the reviewer has a `followup` severity for real problems the PR didn't cause; those don't hold the PR.
 - **needs-me** counts open follow-ups per repo under its list, and `needs-me --followups` lists them. they're backlog, so they don't change the exit code.
 
 ```sh
@@ -121,7 +121,7 @@ it lists only what needs you: issues and PRs labelled `needs-decision`, PRs with
 
 - `--json` for scripts, or for a bot that posts you a digest
 - `--next` for just the top one
-- `--followups` lists the follow-up backlog instead (open `followup` issues, plus open entries in `.followups.md` in the repo you're in). without it, a `backlog: N open follow-ups in owner/repo` line per repo closes the list
+- `--followups` lists the follow-up backlog instead (open `followup` issues, plus open entries in `.followups.md` in the repo you're in). without it, a `backlog: N open follow-ups in owner/repo` line per repo closes the text list (not `--json`). `--followups` works in a repo with no github remote too, reading just `.followups.md`
 - repos come from the arguments, `$NEEDS_ME_REPOS`, or the repo you're in
 - exits 0 when nothing needs you, 1 when something does, 2 on errors. follow-ups never count as needing you, except under `--followups`, where 1 means there are some
 

@@ -42,9 +42,11 @@ bash <this skill's dir>/file-followup.sh \
 - No script? `gh issue create --label followup` with the same four things in
   the body does the same job, or add a `- [ ] title` entry with `where`,
   `why`, `fix` and `from` lines to `.followups.md`.
-- If you can't reach GitHub (a headless worker has no token), list them in
-  your PR text and summary under **Follow-ups** in the same shape. The lead
-  files them.
+- A headless shop-floor worker has no GitHub token, so it doesn't file
+  anything or write `.followups.md` into its branch: it lists follow-ups
+  under **Follow-ups** in the PR text and summary as
+  `title | path:line | why | fix`, and the lead files them. The launcher
+  sets `SF_WORKER=1`, and under it the script only prints that line.
 
 ## Then stop
 

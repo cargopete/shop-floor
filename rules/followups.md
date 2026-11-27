@@ -13,7 +13,8 @@ alwaysApply: true
   `path:line`, why it matters, a suggested fix and a link back to the PR or
   issue you were on. The shop-floor-followups skill's `file-followup.sh`
   does this, and falls back to `.followups.md` at the repo root when there's
-  no GitHub remote or `gh`. Can't reach either? List them under
-  **Follow-ups** in your summary.
+  no GitHub remote or `gh`. A headless shop-floor worker (no GitHub token)
+  doesn't run it and doesn't write `.followups.md`: it lists them under
+  **Follow-ups** in the PR text and summary, and the lead files them.
 - When the task is done, list what you filed and stop. Don't offer to fix the
   follow-ups too.

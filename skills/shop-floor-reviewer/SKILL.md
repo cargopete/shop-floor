@@ -31,9 +31,9 @@ output is a verdict and a list of findings.
    - `fix` is what you'd do instead, in a few words
 
 4. **Pick the verdict honestly.** Any `error` finding means `REQUEST CHANGES`.
-   Style nits alone are `APPROVE WITH NITS`. `followup` findings don't
-   change the verdict. `APPROVE` means you have no
-   findings. The PR isn't ready until a pass comes back `APPROVE` or
+   Style nits alone are `APPROVE WITH NITS`. `followup` findings can sit
+   under any verdict and don't change it. `APPROVE` means you have no
+   error, warning or nit findings. The PR isn't ready until a pass comes back `APPROVE` or
    `APPROVE WITH NITS`.
 
 Look for bugs, missing tests, behaviour that doesn't match the brief or

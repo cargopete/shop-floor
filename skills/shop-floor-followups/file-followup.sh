@@ -20,36 +20,46 @@
 #   --repo   owner/repo (default: the repo gh sees here)
 #   --file   always write to .followups.md, never GitHub
 #
-# SF_GH overrides the gh command, as in launch-worker.sh. Prints the issue
-# URL or the file path and exits 0; exits 2 on bad usage.
+# SF_GH overrides the gh command, as in launch-worker.sh. Under SF_WORKER=1
+# (a headless shop-floor worker, which has no GitHub token) it files nothing
+# and prints the line to put under **Follow-ups** in the PR text instead.
+# Prints the issue URL or the file path and exits 0; exits 2 on bad usage.
+
 # shellcheck disable=SC2016  # the backticks are Markdown, not expansions
 set -euo pipefail
 
-usage() { sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"; }
+need() { [ $# -ge 2 ] || { echo "file-followup.sh: $1 needs a value" >&2; exit 2; }; }
+flat() { tr '\n\t' '  ' <<<"$1" | sed 's/^ *//; s/ *$//'; }
 
 title="" where="" why="" fix="" from="" repo="" force_file=0
 while [ $# -gt 0 ]; do
   case $1 in
-    --title) title=${2-}; shift 2 ;;
-    --where) where=${2-}; shift 2 ;;
-    --why) why=${2-}; shift 2 ;;
-    --fix) fix=${2-}; shift 2 ;;
-    --from) from=${2-}; shift 2 ;;
-    --repo) repo=${2-}; shift 2 ;;
+    --title) need "$@"; title=$(flat "$2"); shift 2 ;;
+    --where) need "$@"; where=$(flat "$2"); shift 2 ;;
+    --why) need "$@"; why=$(flat "$2"); shift 2 ;;
+    --fix) need "$@"; fix=$(flat "$2"); shift 2 ;;
+    --from) need "$@"; from=$(flat "$2"); shift 2 ;;
+    --repo) need "$@"; repo=$(flat "$2"); shift 2 ;;
     --file) force_file=1; shift ;;
     -h | --help) usage; exit 0 ;;
     *) echo "file-followup.sh: unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
 done
-title=$(tr '\n' ' ' <<<"$title" | sed 's/^ *//; s/ *$//')
 [ -n "$title" ] || { echo "file-followup.sh: --title is required" >&2; exit 2; }
+
+if [ "${SF_WORKER:-0}" = 1 ]; then
+  echo "not filed: headless workers have no GitHub token. Add this line under **Follow-ups** in your PR text and summary; the lead files it:"
+  echo "- $title | ${where:--} | ${why:--} | ${fix:--}"
+  exit 0
+fi
 
 read -r -a GH <<<"${SF_GH:-gh}"
 root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 
 to_file() {
   local f="$root/.followups.md"
-  if [ -f "$f" ] && grep -Fxq -- "- [ ] $title" "$f"; then
+  if [ -f "$f" ] && grep -Fxqi -- "- [ ] $title" "$f"; then
     echo "already in $f: $title"
     return 0
   fi
@@ -84,15 +94,17 @@ if [ "$have_gh" = 0 ] || [ -z "$repo" ]; then
 fi
 
 # Same title already open? Don't file it twice.
+# Listed rather than searched, so search syntax in a title can't change the
+# query and a just-filed issue isn't missed while the index catches up.
 existing=""
 want=$(tr '[:upper:]' '[:lower:]' <<<"$title")
-while IFS=$'\t' read -r t u; do
+while IFS=$'\t' read -r u t; do
   if [ "$(tr '[:upper:]' '[:lower:]' <<<"$t")" = "$want" ]; then
     existing=$u
     break
   fi
 done < <("${GH[@]}" issue list --repo "$repo" --state open --label followup \
-  --search "$title in:title" --limit 50 --json title,url --jq '.[] | [.title, .url] | @tsv' 2>/dev/null || true)
+  --limit 1000 --json title,url --jq '.[] | .url + "\t" + .title' 2>/dev/null || true)
 if [ -n "$existing" ]; then
   echo "already filed: $existing"
   exit 0

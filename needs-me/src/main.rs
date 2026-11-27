@@ -24,6 +24,8 @@ const RUNNING_LABEL: &str = "worker-running";
 const FAILED_LABEL: &str = "worker-failed";
 const FOLLOWUP_LABEL: &str = "followup";
 const FOLLOWUPS_FILE: &str = ".followups.md";
+/// Most follow-up issues fetched per repo; a count at the cap shows as `N+`.
+const FOLLOWUP_LIMIT: usize = 1000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Kind {
@@ -271,7 +273,7 @@ fn list_followups(repo: &str) -> Result<Vec<Item>, String> {
         "--label",
         FOLLOWUP_LABEL,
         "--limit",
-        "500",
+        &FOLLOWUP_LIMIT.to_string(),
         "--json",
         "number,title,url,createdAt",
     ])?;
@@ -326,7 +328,8 @@ fn local_followups_file() -> Option<std::path::PathBuf> {
 
 fn backlog_line(place: &str, n: usize) -> String {
     let what = if n == 1 { "follow-up" } else { "follow-ups" };
-    format!("backlog: {n} open {what} in {place} (needs-me --followups)")
+    let plus = if n >= FOLLOWUP_LIMIT { "+" } else { "" };
+    format!("backlog: {n}{plus} open {what} in {place} (needs-me --followups)")
 }
 
 fn line(i: &Item) -> String {
@@ -405,6 +408,9 @@ fn main() -> ExitCode {
             Ok(v) if !s(&v, "nameWithOwner").is_empty() => {
                 repos.push(s(&v, "nameWithOwner").to_string())
             }
+            // --followups can still read .followups.md, which is where
+            // file-followup.sh writes when there's no GitHub remote.
+            _ if followups && local_followups_file().is_some() => {}
             _ => {
                 eprintln!("needs-me: no repos given and not in a GitHub repo\n\n{USAGE}");
                 return ExitCode::from(2);
@@ -425,9 +431,13 @@ fn main() -> ExitCode {
 
     let mut items = Vec::new();
     let mut failed = false;
+    let mut ok_repos = Vec::new();
     for repo in &repos {
         match collect(repo) {
-            Ok(mut found) => items.append(&mut found),
+            Ok(mut found) => {
+                items.append(&mut found);
+                ok_repos.push(repo.clone());
+            }
             Err(e) => {
                 eprintln!("needs-me: {repo}: {e}");
                 failed = true;
@@ -456,7 +466,7 @@ fn main() -> ExitCode {
             }
         }
         if !next {
-            print_backlog(&repos);
+            print_backlog(&ok_repos);
         }
     }
 
@@ -542,10 +552,13 @@ fn run_followups(repos: &[String], json_out: bool, next: bool) -> ExitCode {
     } else {
         let shown = out.len();
         for i in items.iter().take(shown) {
-            println!("{}", line(i));
+            println!(
+                "followup {}#{} {}\n         {}",
+                i.repo, i.number, i.title, i.url
+            );
         }
         for (file, title) in local.iter().take(shown.saturating_sub(items.len())) {
-            println!("{:<6} {file}: {title}", Kind::Followup.as_str());
+            println!("followup {file}: {title}");
         }
     }
 
@@ -697,6 +710,7 @@ mod tests {
             backlog_line("o/r", 3),
             "backlog: 3 open follow-ups in o/r (needs-me --followups)"
         );
+        assert!(backlog_line("o/r", FOLLOWUP_LIMIT).contains(&format!("{FOLLOWUP_LIMIT}+ open")));
     }
 
     #[test]
