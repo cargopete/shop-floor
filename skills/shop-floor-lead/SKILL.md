@@ -40,14 +40,18 @@ work moving and the issue list honest. Workers do the changes.
      comment saying why.
    - `CAP HIT: ...` / `ABORTED: ...`: look at the branch, then relaunch with
      a bigger cap or a smaller brief.
-6. **Review.** A PR is done when CI is green and a separate review pass is
-   happy with the diff. For a fresh-context review, run
-   `bash launch-worker.sh --review fix-42 review-brief.md opus`: it checks out
-   `agent/fix-42` detached, without Edit or Write tools, and its result starts
-   `REVIEWED: <verdict>`. Post the findings on the PR yourself. To fix what it
-   found, write a short brief and relaunch the same name with
-   `SF_CONTINUE=1`: new commits on the same branch, same PR. Push back on scope creep. Don't merge your own
-   unreviewed work.
+6. **Review.** A PR isn't ready until CI is green and a separate review pass
+   has come back `APPROVE` or `APPROVE WITH NITS`. Use the shop-floor-reviewer
+   skill, or for a fresh-context review run
+   `bash launch-worker.sh --review fix-42 review-brief.md opus` with
+   `review-brief.md` from this skill directory: it checks out `agent/fix-42`
+   detached, without Edit or Write tools, and its result starts
+   `REVIEWED: <verdict>`. Findings are `path:line, severity, issue, fix`.
+   Post them on the PR yourself. `REQUEST CHANGES` means write a short brief
+   and relaunch the same name with `SF_CONTINUE=1`: new commits on the same
+   branch, same PR, then review again. Push back on scope creep. Don't merge
+   your own unreviewed work, and don't hand a PR over as ready before this
+   pass.
 7. **Merge or hand over.** Merge only if the human said you may. Otherwise
    leave it green; `needs-me` will show it to them.
 

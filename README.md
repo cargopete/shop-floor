@@ -6,13 +6,21 @@ one lead agent per project. every bit of work is a github issue that ends in one
 
 the longer story, with the honest numbers, is in the article: https://x.com/cargo_pete/status/2125888240087396700
 
+## what you get
+
+- one lead per project, and workers on their own branches
+- every job is a github issue that ends in one PR
+- needs-me, the inbox of what's waiting on you
+- a post-edit typecheck workers have to run (kitbag doesn't carry hooks; a claude code hook snippet is in the worker skill if you want it)
+- a reviewer that returns `path:line, severity, issue, fix` verdicts before a PR is marked ready
+
 ## install
 
 ```sh
 kitbag apply github:cargopete/shop-floor --to claude-code,codex
 ```
 
-kitbag shows you the plan and asks before it writes anything. `kitbag undo` takes it back out. `--to all` also does cursor and gemini cli. this profile has no mcp servers, permission rules or hooks, so there's nothing to `--trust`.
+kitbag shows you the plan and asks before it writes anything. `kitbag undo` takes it back out. `--to all` also does cursor and gemini cli. this profile has no mcp servers or permission rules. kitbag doesn't carry hooks, so the post-edit check ships as a script in the worker skill (run it with bash) and an optional claude code hook snippet you copy into settings yourself; nothing needs `--trust-source`.
 
 needs kitbag 0.1.2 or newer (`cargo install kitbag`). the target id is `claude-code`, not `claude`.
 
@@ -22,7 +30,7 @@ the `needs-me` command is a separate small binary:
 cargo install --git https://github.com/cargopete/shop-floor needs-me
 ```
 
-## what you get
+## the profile
 
 **the rules** (`instructions.md`, lands in `CLAUDE.md` / `AGENTS.md` / `GEMINI.md`). one lead per project. issue first, then exactly one PR that says `Closes #N`. a short summary on every PR: what changed, why, how it was checked. the human gets asked for decisions and nothing else. a worker that exits cleanly without a PR has failed.
 
@@ -39,11 +47,14 @@ cargo install --git https://github.com/cargopete/shop-floor needs-me
 
 **the lead skill** (`skills/shop-floor-lead`). the loop the lead follows: issue, decide or ask, brief, launch, check the result, review, merge or hand over. comes with:
 
-- `brief-template.md`: the brief every worker gets. scope, what not to touch, where to look, how to check, how to finish.
+- `brief-template.md`: the brief every worker gets. scope, what not to touch, where to look, how to check (including the post-edit typecheck), how to finish.
+- `review-brief.md`: the brief for a `--review` pass, including the verdict shape.
 - `launch-worker.sh`: the headless worker launcher. more below.
 - `labels.sh`: creates the labels.
 
-**the worker skill** (`skills/shop-floor-worker`). what a worker does when nobody's watching: stay on its branch, commit, write the PR text, finish with a summary of ten lines or fewer, and say when it's blocked instead of working around it.
+**the worker skill** (`skills/shop-floor-worker`). what a worker does when nobody's watching: stay on its branch, commit, write the PR text, finish with a summary of ten lines or fewer, and say when it's blocked instead of working around it. after source edits it runs `post-edit-check.sh`, which auto-detects `cargo check`, a `typecheck` script, `tsc --noEmit` or `go build`, or uses `$SF_CHECK` / a `.shop-floor-check` in the repo. `claude-code-hook.json` in the same folder is a PostToolUse hook you can copy into `~/.claude/settings.json` or the project's `.claude/settings.json`; kitbag will not install it for you.
+
+**the reviewer** (`skills/shop-floor-reviewer`, plus `review-brief.md` in the lead skill). a fresh-context pass the lead runs before a PR is marked ready. the result is a verdict (`APPROVE`, `APPROVE WITH NITS` or `REQUEST CHANGES`) and findings as `path:line, severity, issue, fix`. `launch-worker.sh --review` uses this; REQUEST CHANGES goes back to the worker with `SF_CONTINUE=1`.
 
 **commands**: `/brief <issue>` writes a worker brief, `/needs-me` lists what's waiting on you, `/summary` writes the PR summary for the current branch.
 
@@ -66,7 +77,7 @@ for each run it makes a git worktree on branch `agent/<name>` from the default b
 
 `SF_CONTINUE=1` with the same name sends a worker back to its own branch, say to fix what a review found. its push updates the same PR.
 
-`--review` runs a second worker with a fresh context on a detached checkout of the branch, without edit tools, and records its verdict. it never pushes.
+`--review` runs a second worker with a fresh context on a detached checkout of the branch, without edit tools, and records its verdict (`APPROVE`, `APPROVE WITH NITS` or `REQUEST CHANGES`, then `path:line, severity, issue, fix`). it never pushes. a PR isn't ready until that pass is APPROVE or APPROVE WITH NITS.
 
 if your workers run as a user with no github access (mine do), `SF_GH` sets the gh command and `SF_PUBLISH` swaps in your own push-and-open-PR script.
 

@@ -10,8 +10,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: sudo apt-get update -q && sudo apt-get install -y -q shellcheck tmux jq
-      - run: shellcheck skills/shop-floor-lead/*.sh tests/*.sh
+      - run: shellcheck skills/shop-floor-lead/*.sh skills/shop-floor-worker/*.sh tests/*.sh
       - run: bash tests/launcher.sh
+      - run: bash tests/post-edit-check.sh
 
   needs-me:
     runs-on: ubuntu-latest
@@ -39,5 +40,10 @@ jobs:
           home=$(mktemp -d)
           kitbag apply . --to claude-code,codex,cursor,gemini-cli --home "$home" --yes
           test -f "$home/.claude/skills/shop-floor-lead/launch-worker.sh"
+          test -f "$home/.claude/skills/shop-floor-lead/review-brief.md"
           test -f "$home/.agents/skills/shop-floor-worker/SKILL.md"
+          test -f "$home/.agents/skills/shop-floor-worker/post-edit-check.sh"
+          test -f "$home/.claude/skills/shop-floor-worker/post-edit-check.sh"
+          test -f "$home/.claude/skills/shop-floor-worker/claude-code-hook.json"
+          test -f "$home/.agents/skills/shop-floor-reviewer/SKILL.md"
           grep -q "kitbag:begin shop-floor" "$home/.claude/CLAUDE.md"

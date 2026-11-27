@@ -19,3 +19,8 @@ questions and repos that don't use GitHub issues.
 - A worker that exits cleanly without a PR has failed. Say so; don't report it
   as done.
 - "Done" means checked. Say how you checked it, or mark it UNVERIFIED.
+  After source edits, run the worker skill's post-edit-check.sh. kitbag
+  doesn't carry hooks.
+- A PR isn't ready until a review pass has returned findings as
+  `path:line, severity, issue, fix` and an overall APPROVE or
+  APPROVE WITH NITS. See the lead skill's review-brief.md.
